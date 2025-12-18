@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+numpy
+scipy
+websockets
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+matplotlib
+torch
+# pandas
