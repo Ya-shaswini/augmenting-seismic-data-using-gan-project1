@@ -4,6 +4,8 @@ from app.api import router as api_router
 from app.websockets import router as ws_router
 from app.database import connect_to_mongo, close_mongo_connection
 
+import os
+
 app = FastAPI(title="Seismic GAN API", description="Real-time seismic data augmentation and monitoring")
 
 # CORS setup
@@ -12,9 +14,18 @@ origins = [
     "http://localhost:3001",
 ]
 
+# Add production frontend URL from environment variable if exists
+prod_origin = os.getenv("FRONTEND_URL")
+if prod_origin:
+    origins.append(prod_origin)
+
+# Allow vercel previews
+allow_origin_regex = "https://.*\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
