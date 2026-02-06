@@ -53,30 +53,33 @@ async def synthesize_event(magnitude: float = 5.0, distance: float = 50.0):
     """
     from app.services.prediction_service import prediction_service
     
-    # 1. Generate Ground Truth (Clean)
-    clean_signal = prediction_service.generate_synthetic_earthquake(magnitude=magnitude, distance_km=distance)
-    
-    # 2. Add Heavy Noise (MEMS Simulation) - noise level also scaled by magnitude to prevent masking everything
-    noise_level = 0.25 if magnitude > 4 else 0.1
-    noise = np.random.normal(0, noise_level, len(clean_signal))
-    noisy_signal = clean_signal + noise
-    
-    # 3. Use GAN/Denoiser to convert back to High Quality
-    result = gan_service.denoise_and_predict(noisy_signal.tolist())
-    
-    return {
-        "title": f"M{magnitude} Earthquake at {distance}km",
-        "parameters": {
-            "magnitude": magnitude,
-            "distance_km": distance,
-            "sample_rate_hz": 100,
-            "units": "Gal (Acceleration)"
-        },
-        "raw_noisy": noisy_signal.tolist(),
-        "synthesized_clean": result['denoised_data'],
-        "snr_improvement": result['snr_improvement'],
-        "prediction": result['prediction']
-    }
+    try:
+        # 1. Generate Ground Truth (Clean)
+        clean_signal = prediction_service.generate_synthetic_earthquake(magnitude=magnitude, distance_km=distance)
+        
+        # 2. Add Heavy Noise (MEMS Simulation) - noise level also scaled by magnitude to prevent masking everything
+        noise_level = 0.25 if magnitude > 4 else 0.1
+        noise = np.random.normal(0, noise_level, len(clean_signal))
+        noisy_signal = clean_signal + noise
+        
+        # 3. Use GAN/Denoiser to convert back to High Quality
+        result = gan_service.denoise_and_predict(noisy_signal.tolist())
+        
+        return {
+            "title": f"M{magnitude} Earthquake at {distance}km",
+            "parameters": {
+                "magnitude": float(magnitude),
+                "distance_km": float(distance),
+                "sample_rate_hz": 100,
+                "units": "Gal (Acceleration)"
+            },
+            "raw_noisy": noisy_signal.astype(float).tolist(),
+            "synthesized_clean": result['denoised_data'],
+            "snr_improvement": f"{result['snr_improvement']:.2f} dB",
+            "prediction": result['prediction']
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/research/batch-synthesize")
 async def batch_synthesize(
@@ -108,9 +111,9 @@ async def batch_synthesize(
         result = gan_service.denoise_and_predict(noisy_signal.tolist())
         
         dataset.append({
-            "magnitude": round(mag, 2),
-            "distance_km": round(dist, 2),
-            "clean_data": result['denoised_data']
+            "magnitude": round(float(mag), 2),
+            "distance_km": round(float(dist), 2),
+            "clean_data": [float(x) for x in result['denoised_data']]
         })
         
     return {

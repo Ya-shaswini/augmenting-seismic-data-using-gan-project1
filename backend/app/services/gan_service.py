@@ -268,9 +268,13 @@ class GanService:
         prediction = prediction_service.predict_p_wave(denoised_signal)
         
         return {
-            "denoised_data": denoised_signal.tolist(),
-            "snr_improvement": snr_improvement,
-            "prediction": prediction
+            "denoised_data": denoised_signal.astype(float).tolist(),
+            "snr_improvement": float(snr_improvement),
+            "prediction": {
+                "detected": bool(prediction['detected']),
+                "index": int(prediction['index']),
+                "confidence": float(prediction['confidence'])
+            }
         }
 
 gan_service = GanService()

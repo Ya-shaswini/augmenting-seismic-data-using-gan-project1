@@ -9,3 +9,5 @@ passlib[bcrypt]
 matplotlib
 torch
 # pandas
+motor
+python-dotenv

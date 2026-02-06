@@ -27,8 +27,8 @@ class PredictionService:
             if abs_signal[i] > threshold:
                 return {
                     "detected": True,
-                    "index": i,
-                    "confidence": min(0.99, 0.5 + (abs_signal[i] * 2))
+                    "index": int(i),
+                    "confidence": float(min(0.99, 0.5 + (float(abs_signal[i]) * 2)))
                 }
         return {"detected": False, "index": -1, "confidence": 0.0}
 
