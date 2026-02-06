@@ -45,6 +45,80 @@ async def generate_data(request: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/synthesize")
+async def synthesize_event(magnitude: float = 5.0, distance: float = 50.0):
+    """
+    Demonstrates synthesis: Generates a structured earthquake with specific
+    parameters to help earthquake centers analyze events.
+    """
+    from app.services.prediction_service import prediction_service
+    
+    # 1. Generate Ground Truth (Clean)
+    clean_signal = prediction_service.generate_synthetic_earthquake(magnitude=magnitude, distance_km=distance)
+    
+    # 2. Add Heavy Noise (MEMS Simulation) - noise level also scaled by magnitude to prevent masking everything
+    noise_level = 0.25 if magnitude > 4 else 0.1
+    noise = np.random.normal(0, noise_level, len(clean_signal))
+    noisy_signal = clean_signal + noise
+    
+    # 3. Use GAN/Denoiser to convert back to High Quality
+    result = gan_service.denoise_and_predict(noisy_signal.tolist())
+    
+    return {
+        "title": f"M{magnitude} Earthquake at {distance}km",
+        "parameters": {
+            "magnitude": magnitude,
+            "distance_km": distance,
+            "sample_rate_hz": 100,
+            "units": "Gal (Acceleration)"
+        },
+        "raw_noisy": noisy_signal.tolist(),
+        "synthesized_clean": result['denoised_data'],
+        "snr_improvement": result['snr_improvement'],
+        "prediction": result['prediction']
+    }
+
+@router.get("/research/batch-synthesize")
+async def batch_synthesize(
+    num_samples: int = 10, 
+    min_mag: float = 4.0, 
+    max_mag: float = 7.0,
+    min_dist: float = 10.0,
+    max_dist: float = 100.0
+):
+    """
+    Generates a batch of synthetic records for research center benchmarking.
+    """
+    from app.services.prediction_service import prediction_service
+    dataset = []
+    
+    for _ in range(num_samples):
+        mag = np.random.uniform(min_mag, max_mag)
+        dist = np.random.uniform(min_dist, max_dist)
+        
+        # Generate Ground Truth
+        clean_signal = prediction_service.generate_synthetic_earthquake(magnitude=mag, distance_km=dist)
+        
+        # Add Noise
+        noise_level = 0.2 if mag > 5 else 0.05
+        noise = np.random.normal(0, noise_level, len(clean_signal))
+        noisy_signal = clean_signal + noise
+        
+        # Denoise
+        result = gan_service.denoise_and_predict(noisy_signal.tolist())
+        
+        dataset.append({
+            "magnitude": round(mag, 2),
+            "distance_km": round(dist, 2),
+            "clean_data": result['denoised_data']
+        })
+        
+    return {
+        "status": "success",
+        "count": len(dataset),
+        "dataset": dataset
+    }
+
 @router.post("/batch-denoise")
 async def batch_denoise(file: UploadFile = File(...)):
     if not file.filename.endswith('.csv'):
@@ -77,19 +151,26 @@ async def batch_denoise(file: UploadFile = File(...)):
         if not data:
              raise HTTPException(status_code=400, detail="Could not parse any numerical data from CSV")
 
-        # Simulate Denoising (Mock)
-        # In real world, we'd pass 'data' to gan_service.denoise(data)
-        data_np = np.array(data)
-        # Apply simple smoothing for "denoised" effect
-        cleaned = np.convolve(data_np, np.ones(5)/5, mode='same')
+        # Process exactly 1024 points for the model
+        if len(data) < 1024:
+            # Pad with zeros if too short
+            padded_data = data + [0.0] * (1024 - len(data))
+            process_data = padded_data
+        else:
+            # Use first 1024 points
+            process_data = data[:1024]
+            
+        result = gan_service.denoise_and_predict(process_data)
         
         return {
             "filename": file.filename,
             "original_samples": len(data),
             "status": "completed",
-            "message": "File successfully processed and denoised.",
-            "preview_data": cleaned[:100].tolist(),
-            "cleaned_data": cleaned.tolist()
+            "message": "File successfully denoised and analyzed for earthquake prediction.",
+            "snr_improvement": f"{result['snr_improvement']:.2f} dB",
+            "prediction": result['prediction'],
+            "preview_data": result['denoised_data'][:100],
+            "cleaned_data": result['denoised_data']
         }
 
     except Exception as e:
